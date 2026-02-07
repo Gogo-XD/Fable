@@ -1,0 +1,39 @@
+@import "tailwindcss";
+@import "@xyflow/react/dist/style.css";
+
+@theme {
+  --color-bg: #0f0f0f;
+  --color-surface: #1a1a2e;
+  --color-surface-hover: #232340;
+  --color-border: #2a2a4a;
+  --color-accent: #7c3aed;
+  --color-accent-hover: #6d28d9;
+  --color-text: #e2e8f0;
+  --color-text-muted: #94a3b8;
+  --color-node-character: #f472b6;
+  --color-node-location: #34d399;
+  --color-node-event: #fbbf24;
+  --color-node-item: #60a5fa;
+  --color-node-organization: #a78bfa;
+  --color-node-concept: #fb923c;
+  --color-node-default: #94a3b8;
+  --color-ai: #06b6d4;
+}
+
+body {
+  margin: 0;
+  background-color: var(--color-bg);
+  color: var(--color-text);
+  font-family: "Inter", system-ui, sans-serif;
+}
+
+#root {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Keep relation hover labels above all graph layers (nodes + edges). */
+.react-flow__edgelabel-renderer {
+  z-index: 9999 !important;
+}
