@@ -126,9 +126,13 @@ async def accept_mechanic_options(
     mechanic_run_id: str,
     body: MechanicAcceptRequest,
     service: CanonMechanicServiceDep,
+    rag_sync: WorldRagSyncServiceDep,
 ):
     try:
-        return await service.accept_options(world_id=world_id, mechanic_run_id=mechanic_run_id, data=body)
+        result = await service.accept_options(world_id=world_id, mechanic_run_id=mechanic_run_id, data=body)
+        if int(result.applied_options) > 0:
+            await rag_sync.mark_dirty(world_id, reason="mechanic_option_apply")
+        return result
     except LookupError as exc:
         raise HTTPException(404, str(exc)) from exc
     except ValueError as exc:

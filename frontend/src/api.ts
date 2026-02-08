@@ -6,7 +6,7 @@ import type {
   AnalysisResult, AnalyzeAllResult, GraphData,
   HistorianMessageRequest, HistorianMessageResponse,
   GuardianScanAccepted, GuardianScanRequest, GuardianRunDetail, GuardianFindingStatusUpdate,
-  MechanicGenerateAccepted, MechanicGenerateRequest, MechanicRunDetail,
+  MechanicGenerateAccepted, MechanicGenerateRequest, MechanicRunDetail, MechanicAcceptRequest, MechanicAcceptResult,
   TimelineMarker, TimelineMarkerCreate, TimelineMarkerUpdate, TimelineMarkerReposition,
   TimelineOperation, TimelineOperationCreate, TimelineOperationUpdate,
   TimelineRebuildResult, TimelineSnapshot, TimelineSnapshotUpsert, TimelineWorldState,
@@ -137,6 +137,11 @@ export const canonGuardian = {
       `/api/guardian/${worldId}/mechanic/${mechanicRunId}${qs ? `?${qs}` : ""}`,
     );
   },
+  acceptMechanic: (worldId: string, mechanicRunId: string, data: MechanicAcceptRequest) =>
+    request<MechanicAcceptResult>(`/api/guardian/${worldId}/mechanic/${mechanicRunId}/accept`, {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
 };
 
 export const graph = {

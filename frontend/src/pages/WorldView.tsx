@@ -145,6 +145,7 @@ export default function WorldView() {
   const [expandedFindingIds, setExpandedFindingIds] = useState<Set<string>>(new Set());
   const [dismissingFindingId, setDismissingFindingId] = useState<string | null>(null);
   const [runningMechanicFindingId, setRunningMechanicFindingId] = useState<string | null>(null);
+  const [runningMechanicOptionId, setRunningMechanicOptionId] = useState<string | null>(null);
   const [mechanicRunsByFinding, setMechanicRunsByFinding] = useState<Record<string, MechanicRunDetail>>({});
   const [mechanicErrorByFinding, setMechanicErrorByFinding] = useState<Record<string, string>>({});
   const suppressMarkerReloadRef = useRef(false);
@@ -489,6 +490,7 @@ export default function WorldView() {
     if (!worldId) throw new Error("No world");
     setRunningGuardian(true);
     setGuardianError(null);
+    setRunningMechanicOptionId(null);
     setMechanicRunsByFinding({});
     setMechanicErrorByFinding({});
     try {
@@ -576,6 +578,46 @@ export default function WorldView() {
       setMechanicErrorByFinding((prev) => ({ ...prev, [findingId]: message }));
     } finally {
       setRunningMechanicFindingId(null);
+    }
+  }
+
+  async function handleRunMechanicOption(findingId: string, optionId: string): Promise<void> {
+    if (!worldId) throw new Error("No world");
+    if (!guardianRun) return;
+    const mechanicRun = mechanicRunsByFinding[findingId];
+    if (!mechanicRun) return;
+
+    setRunningMechanicOptionId(optionId);
+    setMechanicErrorByFinding((prev) => {
+      const next = { ...prev };
+      delete next[findingId];
+      return next;
+    });
+
+    try {
+      const result = await canonGuardianApi.acceptMechanic(worldId, mechanicRun.id, {
+        option_ids: [optionId],
+        accept_all: false,
+        create_guardian_actions: true,
+        apply_immediately: true,
+      });
+      const [updatedMechanicRun, updatedGuardianRun] = await Promise.all([
+        canonGuardianApi.getMechanicRun(worldId, mechanicRun.id, { include_options: true }),
+        canonGuardianApi.getRun(worldId, guardianRun.id, { include_details: true }),
+      ]);
+      setMechanicRunsByFinding((prev) => ({ ...prev, [findingId]: updatedMechanicRun }));
+      setGuardianRun(updatedGuardianRun);
+      setExpandedFindingIds((prev) => new Set(prev).add(findingId));
+      await reload({ markerId: activeMarkerIdRef.current });
+
+      if (result.apply_failures > 0 && result.message) {
+        setMechanicErrorByFinding((prev) => ({ ...prev, [findingId]: result.message || "One or more options failed to apply." }));
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Failed to run mechanic option";
+      setMechanicErrorByFinding((prev) => ({ ...prev, [findingId]: message }));
+    } finally {
+      setRunningMechanicOptionId(null);
     }
   }
 
@@ -907,12 +949,14 @@ export default function WorldView() {
               expandedFindingIds={expandedFindingIds}
               dismissingFindingId={dismissingFindingId}
               runningMechanicFindingId={runningMechanicFindingId}
+              runningMechanicOptionId={runningMechanicOptionId}
               mechanicRunsByFinding={mechanicRunsByFinding}
               mechanicErrorByFinding={mechanicErrorByFinding}
               onRunGuardian={handleRunGuardian}
               onToggleFinding={handleToggleGuardianFindingExpanded}
               onDismissFinding={handleDismissGuardianFinding}
               onRunMechanic={handleRunMechanicForFinding}
+              onRunMechanicOption={handleRunMechanicOption}
             />
           </SidePanel>
         )}

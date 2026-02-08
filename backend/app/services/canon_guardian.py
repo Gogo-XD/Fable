@@ -34,7 +34,15 @@ ENTITY_OPS = {"entity_create", "entity_patch", "entity_delete", "entity_add", "e
 RELATION_OPS = {"relation_create", "relation_patch", "relation_delete", "relation_add", "relation_update", "relation_modify", "relation_remove"}
 WORLD_OPS = {"world_patch"}
 ALLOWED_SEVERITIES = {"critical", "high", "medium", "low", "info"}
-ALLOWED_ACTION_TYPES = {"timeline_operation", "entity_patch", "relation_patch", "world_patch", "noop"}
+ALLOWED_ACTION_TYPES = {
+    "timeline_operation",
+    "entity_patch",
+    "relation_patch",
+    "entity_delete",
+    "relation_delete",
+    "world_patch",
+    "noop",
+}
 ALLOWED_EVIDENCE_KINDS = {"note", "entity", "relation", "timeline_marker", "timeline_operation", "world"}
 
 
@@ -348,33 +356,89 @@ class CanonGuardianService:
                 if alias_key:
                     identity_map[alias_key].add(entity["id"])
 
+        # Collapse overlapping identity keys into one finding per connected entity cluster.
+        candidate_identities: dict[str, set[str]] = {}
         for identity, entity_ids in identity_map.items():
-            normalized_ids = sorted(entity_ids)
+            normalized_ids = set(entity_ids)
             if not identity or len(normalized_ids) < 2:
                 continue
-            if scope_entity_ids and not set(normalized_ids).intersection(scope_entity_ids):
+            if scope_entity_ids and not normalized_ids.intersection(scope_entity_ids):
                 continue
-            snippet = ", ".join(entity_by_id[eid]["name"] for eid in normalized_ids[:4])
-            finding = self._new_finding(
-                run_id=run_id,
-                world_id=world_id,
-                severity="high",
-                code="duplicate_entity_identity",
-                title=f"Multiple entities share identity key '{identity}'",
-                detail=f"Identity '{identity}' maps to {len(normalized_ids)} entities ({snippet}).",
-                confidence=1.0,
-                evidence=[{"kind": "entity", "id": eid} for eid in normalized_ids[:8]],
-            )
-            findings.append(finding)
-            actions.append(
-                self._new_action(
+            candidate_identities[identity] = normalized_ids
+
+        if candidate_identities:
+            entity_neighbors: dict[str, set[str]] = defaultdict(set)
+            identities_by_entity: dict[str, set[str]] = defaultdict(set)
+            for identity, entity_ids in candidate_identities.items():
+                sorted_ids = sorted(entity_ids)
+                anchor = sorted_ids[0]
+                identities_by_entity[anchor].add(identity)
+                for entity_id in sorted_ids[1:]:
+                    identities_by_entity[entity_id].add(identity)
+                    entity_neighbors[anchor].add(entity_id)
+                    entity_neighbors[entity_id].add(anchor)
+
+            visited: set[str] = set()
+            for seed_entity_id in sorted(identities_by_entity):
+                if seed_entity_id in visited:
+                    continue
+                stack = [seed_entity_id]
+                cluster_entity_ids: set[str] = set()
+                while stack:
+                    current = stack.pop()
+                    if current in visited:
+                        continue
+                    visited.add(current)
+                    cluster_entity_ids.add(current)
+                    for neighbor in entity_neighbors.get(current, set()):
+                        if neighbor not in visited:
+                            stack.append(neighbor)
+
+                if len(cluster_entity_ids) < 2:
+                    continue
+
+                cluster_identities = sorted(
+                    identity
+                    for identity, entity_ids in candidate_identities.items()
+                    if len(entity_ids.intersection(cluster_entity_ids)) >= 2
+                )
+                if not cluster_identities:
+                    continue
+
+                entity_names = [entity_by_id[eid]["name"] for eid in sorted(cluster_entity_ids)]
+                identity_preview = ", ".join(f"'{identity}'" for identity in cluster_identities[:3])
+                if len(cluster_identities) > 3:
+                    identity_preview += f" (+{len(cluster_identities) - 3} more)"
+                entity_preview = ", ".join(entity_names[:5])
+                if len(entity_names) > 5:
+                    entity_preview += f" (+{len(entity_names) - 5} more)"
+
+                finding = self._new_finding(
                     run_id=run_id,
                     world_id=world_id,
-                    finding_id=finding.id,
-                    action_type="noop",
-                    rationale="Manual merge/disambiguation recommended for duplicate identity keys.",
+                    severity="high",
+                    code="duplicate_entity_identity",
+                    title="Multiple entities share overlapping identity keys",
+                    detail=(
+                        f"Identity keys {identity_preview} map to overlapping entities "
+                        f"({entity_preview})."
+                    ),
+                    confidence=1.0,
+                    evidence=[
+                        {"kind": "entity", "id": entity_id}
+                        for entity_id in sorted(cluster_entity_ids)[:8]
+                    ],
                 )
-            )
+                findings.append(finding)
+                actions.append(
+                    self._new_action(
+                        run_id=run_id,
+                        world_id=world_id,
+                        finding_id=finding.id,
+                        action_type="noop",
+                        rationale="Manual merge/disambiguation recommended for overlapping identity clusters.",
+                    )
+                )
 
         for relation in relations:
             source = entity_by_id.get(relation["source_entity_id"])

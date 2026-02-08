@@ -300,6 +300,8 @@ Allowed action_type values:
 - timeline_operation
 - entity_patch
 - relation_patch
+- entity_delete
+- relation_delete
 - world_patch
 - noop
 

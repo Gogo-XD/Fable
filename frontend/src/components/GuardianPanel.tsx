@@ -8,12 +8,14 @@ interface GuardianPanelProps {
   expandedFindingIds: Set<string>;
   dismissingFindingId: string | null;
   runningMechanicFindingId: string | null;
+  runningMechanicOptionId: string | null;
   mechanicRunsByFinding: Record<string, MechanicRunDetail>;
   mechanicErrorByFinding: Record<string, string>;
   onRunGuardian: () => Promise<void>;
   onToggleFinding: (findingId: string) => void;
   onDismissFinding: (findingId: string) => Promise<void>;
   onRunMechanic: (findingId: string) => Promise<void>;
+  onRunMechanicOption: (findingId: string, optionId: string) => Promise<void>;
 }
 
 export default function GuardianPanel({
@@ -23,13 +25,17 @@ export default function GuardianPanel({
   expandedFindingIds,
   dismissingFindingId,
   runningMechanicFindingId,
+  runningMechanicOptionId,
   mechanicRunsByFinding,
   mechanicErrorByFinding,
   onRunGuardian,
   onToggleFinding,
   onDismissFinding,
   onRunMechanic,
+  onRunMechanicOption,
 }: GuardianPanelProps) {
+  const visibleFindings = run?.findings.filter((finding) => finding.resolution_status !== "applied") ?? [];
+
   return (
     <div className="space-y-4">
       <button
@@ -54,12 +60,12 @@ export default function GuardianPanel({
             Run: {run.id} ({run.status})
           </div>
           <div className="mt-1 text-text-muted">
-            Findings: {run.findings.length} | Actions: {run.actions.length}
+            Findings: {visibleFindings.length} | Actions: {run.actions.length}
           </div>
         </div>
       )}
 
-      {run && run.findings.length === 0 && run.status !== "failed" && (
+      {run && visibleFindings.length === 0 && run.status !== "failed" && (
         <div className="rounded-lg border border-green-800 bg-green-900/20 p-3 text-sm">
           <div className="flex items-center gap-2 font-medium text-green-400">
             <ShieldCheck size={15} />
@@ -71,12 +77,12 @@ export default function GuardianPanel({
         </div>
       )}
 
-      {run && run.findings.length > 0 && (
+      {run && visibleFindings.length > 0 && (
         <div className="space-y-2">
           <div className="text-xs font-semibold uppercase tracking-wide text-text-muted">
             Guardian Findings
           </div>
-          {run.findings.map((finding) => {
+          {visibleFindings.map((finding) => {
             const expanded = expandedFindingIds.has(finding.id);
             const mechanicRun = mechanicRunsByFinding[finding.id];
             const mechanicOptions = mechanicRun?.options.filter(
@@ -147,6 +153,24 @@ export default function GuardianPanel({
                                 <div className="text-text-muted">
                                   Risk: {option.risk_level} | confidence {option.confidence.toFixed(2)}
                                 </div>
+                                <div className="mt-2 flex items-center justify-between">
+                                  <div className="text-text-muted">Status: {option.status}</div>
+                                  <button
+                                    onClick={() => void onRunMechanicOption(finding.id, option.id)}
+                                    disabled={
+                                      runningMechanicOptionId === option.id ||
+                                      (option.status !== "proposed" && option.status !== "accepted")
+                                    }
+                                    className="rounded border border-cyan-700 px-2 py-1 text-xs text-cyan-300 hover:bg-cyan-900/20 disabled:opacity-50"
+                                  >
+                                    {runningMechanicOptionId === option.id ? "Running..." : "Run Now"}
+                                  </button>
+                                </div>
+                                {option.error && (
+                                  <div className="mt-1 rounded border border-red-800 bg-red-900/20 p-1 text-red-300">
+                                    {option.error}
+                                  </div>
+                                )}
                               </div>
                             ))}
                           </div>

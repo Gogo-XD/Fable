@@ -137,7 +137,7 @@ CREATE TABLE IF NOT EXISTS guardian_actions (
     finding_id TEXT REFERENCES guardian_findings(id) ON DELETE SET NULL,
     world_id TEXT NOT NULL REFERENCES worlds(id) ON DELETE CASCADE,
     action_type TEXT NOT NULL
-        CHECK(action_type IN ('timeline_operation', 'entity_patch', 'relation_patch', 'world_patch', 'noop')),
+        CHECK(action_type IN ('timeline_operation', 'entity_patch', 'relation_patch', 'entity_delete', 'relation_delete', 'world_patch', 'noop')),
     op_type TEXT,
     target_kind TEXT CHECK(target_kind IN ('entity', 'relation', 'world')),
     target_id TEXT,
@@ -172,7 +172,7 @@ CREATE TABLE IF NOT EXISTS guardian_mechanic_options (
     finding_id TEXT REFERENCES guardian_findings(id) ON DELETE SET NULL,
     option_index INTEGER NOT NULL DEFAULT 0,
     action_type TEXT NOT NULL
-        CHECK(action_type IN ('timeline_operation', 'entity_patch', 'relation_patch', 'world_patch', 'noop')),
+        CHECK(action_type IN ('timeline_operation', 'entity_patch', 'relation_patch', 'entity_delete', 'relation_delete', 'world_patch', 'noop')),
     op_type TEXT,
     target_kind TEXT CHECK(target_kind IN ('entity', 'relation', 'world')),
     target_id TEXT,

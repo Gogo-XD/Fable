@@ -12,7 +12,15 @@ GuardianRunStatus = Literal["queued", "running", "completed", "failed", "applied
 GuardianFindingSeverity = Literal["critical", "high", "medium", "low", "info"]
 GuardianFindingStatus = Literal["open", "accepted", "dismissed", "applied"]
 GuardianActionStatus = Literal["proposed", "accepted", "applied", "rejected", "failed"]
-GuardianActionType = Literal["timeline_operation", "entity_patch", "relation_patch", "world_patch", "noop"]
+GuardianActionType = Literal[
+    "timeline_operation",
+    "entity_patch",
+    "relation_patch",
+    "entity_delete",
+    "relation_delete",
+    "world_patch",
+    "noop",
+]
 GuardianEvidenceKind = Literal["note", "entity", "relation", "timeline_marker", "timeline_operation", "world"]
 MechanicRunStatus = Literal["queued", "running", "completed", "failed", "partial"]
 MechanicOptionStatus = Literal["proposed", "accepted", "rejected", "applied", "failed"]
@@ -212,6 +220,7 @@ class MechanicAcceptRequest(BaseModel):
     option_ids: list[str] = Field(default_factory=list)
     accept_all: bool = False
     create_guardian_actions: bool = True
+    apply_immediately: bool = False
 
 
 class MechanicAcceptResult(BaseModel):
@@ -225,4 +234,6 @@ class MechanicAcceptResult(BaseModel):
     accepted_options: int = 0
     actions_created: int = 0
     actions_failed: int = 0
+    applied_options: int = 0
+    apply_failures: int = 0
     message: Optional[str] = None

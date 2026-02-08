@@ -25,7 +25,15 @@ from app.services.prompts import build_canon_guardian_mechanic_prompt
 
 logger = get_logger("services.canon_mechanic")
 
-ALLOWED_ACTION_TYPES = {"timeline_operation", "entity_patch", "relation_patch", "world_patch", "noop"}
+ALLOWED_ACTION_TYPES = {
+    "timeline_operation",
+    "entity_patch",
+    "relation_patch",
+    "entity_delete",
+    "relation_delete",
+    "world_patch",
+    "noop",
+}
 ALLOWED_TARGET_KINDS = {"entity", "relation", "world"}
 ALLOWED_RISK_LEVELS = {"low", "medium", "high"}
 ALLOWED_OPTION_STATUSES = {"proposed", "accepted", "rejected", "applied", "failed"}
@@ -559,6 +567,317 @@ class CanonMechanicService:
 
         return MechanicRunDetail(**run.model_dump(), options=options)
 
+    async def _apply_entity_patch(
+        self,
+        db: aiosqlite.Connection,
+        *,
+        world_id: str,
+        option: MechanicOption,
+        now: str,
+    ) -> tuple[bool, str | None]:
+        if not option.target_id:
+            return False, "entity_patch requires target_id"
+
+        payload = dict(option.payload or {})
+        fields: dict[str, Any] = {}
+
+        if isinstance(payload.get("name"), str):
+            name = payload["name"].strip()
+            if name:
+                fields["name"] = name
+        if payload.get("type") is not None:
+            normalized_type = normalize_type(str(payload.get("type") or ""))
+            if normalized_type:
+                fields["type"] = normalized_type
+        if "subtype" in payload:
+            subtype_raw = payload.get("subtype")
+            if subtype_raw is None or str(subtype_raw).strip() == "":
+                fields["subtype"] = None
+            else:
+                fields["subtype"] = normalize_type(str(subtype_raw))
+        if isinstance(payload.get("aliases"), list):
+            aliases = [str(value).strip() for value in payload["aliases"] if str(value).strip()]
+            fields["aliases"] = json.dumps(aliases)
+        if "context" in payload and (payload.get("context") is None or isinstance(payload.get("context"), str)):
+            fields["context"] = payload.get("context")
+        if "summary" in payload and (payload.get("summary") is None or isinstance(payload.get("summary"), str)):
+            fields["summary"] = payload.get("summary")
+        if isinstance(payload.get("tags"), list):
+            tags = [str(value).strip() for value in payload["tags"] if str(value).strip()]
+            fields["tags"] = json.dumps(tags)
+        if "image_url" in payload and (payload.get("image_url") is None or isinstance(payload.get("image_url"), str)):
+            fields["image_url"] = payload.get("image_url")
+        if isinstance(payload.get("status"), str):
+            status = payload["status"].strip()
+            if status:
+                fields["status"] = status
+
+        fields["source"] = "ai"
+        fields["updated_at"] = now
+        set_clause = ", ".join(f"{key} = ?" for key in fields)
+        values = list(fields.values()) + [option.target_id, world_id]
+        cursor = await db.execute(
+            f"UPDATE entities SET {set_clause} WHERE id = ? AND world_id = ?",
+            values,
+        )
+        if cursor.rowcount <= 0:
+            return False, f"Entity target {option.target_id} not found"
+        return True, None
+
+    async def _apply_relation_patch(
+        self,
+        db: aiosqlite.Connection,
+        *,
+        world_id: str,
+        option: MechanicOption,
+        now: str,
+    ) -> tuple[bool, str | None]:
+        if not option.target_id:
+            return False, "relation_patch requires target_id"
+
+        payload = dict(option.payload or {})
+        fields: dict[str, Any] = {}
+        if payload.get("type") is not None:
+            normalized_type = normalize_type(str(payload.get("type") or ""))
+            if normalized_type:
+                fields["type"] = normalized_type
+        if "context" in payload and (payload.get("context") is None or isinstance(payload.get("context"), str)):
+            fields["context"] = payload.get("context")
+        if payload.get("weight") is not None:
+            try:
+                weight = float(payload["weight"])
+                fields["weight"] = max(0.0, min(1.0, weight))
+            except Exception:
+                return False, "relation_patch weight must be numeric"
+
+        fields["source"] = "ai"
+        fields["updated_at"] = now
+        set_clause = ", ".join(f"{key} = ?" for key in fields)
+        values = list(fields.values()) + [option.target_id, world_id]
+        cursor = await db.execute(
+            f"UPDATE relations SET {set_clause} WHERE id = ? AND world_id = ?",
+            values,
+        )
+        if cursor.rowcount <= 0:
+            return False, f"Relation target {option.target_id} not found"
+        return True, None
+
+    async def _apply_entity_delete(
+        self,
+        db: aiosqlite.Connection,
+        *,
+        world_id: str,
+        option: MechanicOption,
+    ) -> tuple[bool, str | None]:
+        if not option.target_id:
+            return False, "entity_delete requires target_id"
+
+        cursor = await db.execute(
+            "DELETE FROM entities WHERE id = ? AND world_id = ?",
+            (option.target_id, world_id),
+        )
+        if cursor.rowcount <= 0:
+            return False, f"Entity target {option.target_id} not found"
+        return True, None
+
+    async def _apply_relation_delete(
+        self,
+        db: aiosqlite.Connection,
+        *,
+        world_id: str,
+        option: MechanicOption,
+    ) -> tuple[bool, str | None]:
+        if not option.target_id:
+            return False, "relation_delete requires target_id"
+
+        cursor = await db.execute(
+            "DELETE FROM relations WHERE id = ? AND world_id = ?",
+            (option.target_id, world_id),
+        )
+        if cursor.rowcount <= 0:
+            return False, f"Relation target {option.target_id} not found"
+        return True, None
+
+    async def _apply_world_patch(
+        self,
+        db: aiosqlite.Connection,
+        *,
+        world_id: str,
+        option: MechanicOption,
+        now: str,
+    ) -> tuple[bool, str | None]:
+        payload = dict(option.payload or {})
+        fields: dict[str, Any] = {}
+        if isinstance(payload.get("name"), str):
+            name = payload["name"].strip()
+            if name:
+                fields["name"] = name
+        if "description" in payload and (payload.get("description") is None or isinstance(payload.get("description"), str)):
+            fields["description"] = payload.get("description")
+        if isinstance(payload.get("entity_types"), list):
+            entity_types = [normalize_type(str(value)) for value in payload["entity_types"] if str(value).strip()]
+            fields["entity_types"] = json.dumps(entity_types)
+        if isinstance(payload.get("relation_types"), list):
+            relation_types = [normalize_type(str(value)) for value in payload["relation_types"] if str(value).strip()]
+            fields["relation_types"] = json.dumps(relation_types)
+
+        if not fields:
+            return True, None
+
+        fields["updated_at"] = now
+        set_clause = ", ".join(f"{key} = ?" for key in fields)
+        values = list(fields.values()) + [world_id]
+        cursor = await db.execute(
+            f"UPDATE worlds SET {set_clause} WHERE id = ?",
+            values,
+        )
+        if cursor.rowcount <= 0:
+            return False, f"World target {world_id} not found"
+        return True, None
+
+    async def _resolve_marker_for_timeline_action(
+        self,
+        db: aiosqlite.Connection,
+        *,
+        world_id: str,
+        payload: dict[str, Any],
+    ) -> str | None:
+        marker_id = str(payload.get("marker_id") or "").strip()
+        if marker_id:
+            cursor = await db.execute(
+                "SELECT id FROM timeline_markers WHERE world_id = ? AND id = ?",
+                (world_id, marker_id),
+            )
+            row = await cursor.fetchone()
+            return marker_id if row else None
+
+        cursor = await db.execute(
+            """SELECT id FROM timeline_markers
+               WHERE world_id = ? AND placement_status = 'placed'
+               ORDER BY sort_key DESC, created_at DESC, id DESC
+               LIMIT 1""",
+            (world_id,),
+        )
+        row = await cursor.fetchone()
+        if row:
+            return str(row["id"])
+        cursor = await db.execute(
+            "SELECT id FROM timeline_markers WHERE world_id = ? ORDER BY created_at DESC, id DESC LIMIT 1",
+            (world_id,),
+        )
+        row = await cursor.fetchone()
+        return str(row["id"]) if row else None
+
+    async def _validate_timeline_target(
+        self,
+        db: aiosqlite.Connection,
+        *,
+        world_id: str,
+        target_kind: str,
+        target_id: str | None,
+    ) -> tuple[bool, str | None]:
+        if target_kind == "world":
+            return True, None
+        if not target_id:
+            return False, f"{target_kind} timeline_operation requires target_id"
+
+        table = "entities" if target_kind == "entity" else "relations"
+        cursor = await db.execute(
+            f"SELECT id FROM {table} WHERE world_id = ? AND id = ?",
+            (world_id, target_id),
+        )
+        row = await cursor.fetchone()
+        if not row:
+            return False, f"{target_kind} target {target_id} not found"
+        return True, None
+
+    async def _apply_timeline_operation(
+        self,
+        db: aiosqlite.Connection,
+        *,
+        world_id: str,
+        option: MechanicOption,
+        now: str,
+    ) -> tuple[bool, str | None]:
+        payload = dict(option.payload or {})
+        marker_id = await self._resolve_marker_for_timeline_action(db, world_id=world_id, payload=payload)
+        if not marker_id:
+            return False, "timeline_operation requires an existing timeline marker"
+
+        op_type = normalize_type(option.op_type or str(payload.get("op_type") or ""))
+        if not op_type:
+            return False, "timeline_operation requires op_type"
+
+        target_kind = normalize_type(option.target_kind or str(payload.get("target_kind") or "world"))
+        if target_kind not in ALLOWED_TARGET_KINDS:
+            return False, f"Unsupported target_kind for timeline_operation: {target_kind}"
+        target_id = option.target_id or str(payload.get("target_id") or "") or None
+        valid_target, target_error = await self._validate_timeline_target(
+            db,
+            world_id=world_id,
+            target_kind=target_kind,
+            target_id=target_id,
+        )
+        if not valid_target:
+            return False, target_error
+
+        op_payload = payload.get("payload") if isinstance(payload.get("payload"), dict) else {
+            key: value
+            for key, value in payload.items()
+            if key not in {"marker_id", "op_type", "target_kind", "target_id"}
+        }
+
+        cursor = await db.execute(
+            "SELECT COALESCE(MAX(order_index), -1) + 1 AS next_index FROM timeline_operations WHERE world_id = ? AND marker_id = ?",
+            (world_id, marker_id),
+        )
+        row = await cursor.fetchone()
+        next_index = int(row["next_index"]) if row else 0
+
+        await db.execute(
+            """INSERT INTO timeline_operations
+               (id, world_id, marker_id, op_type, target_kind, target_id, payload, order_index, created_at, updated_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (
+                str(uuid4()),
+                world_id,
+                marker_id,
+                op_type,
+                target_kind,
+                target_id,
+                json.dumps(op_payload),
+                next_index,
+                now,
+                now,
+            ),
+        )
+        return True, None
+
+    async def _apply_mechanic_option(
+        self,
+        db: aiosqlite.Connection,
+        *,
+        world_id: str,
+        option: MechanicOption,
+        now: str,
+    ) -> tuple[bool, str | None]:
+        action_type = normalize_type(option.action_type or "")
+        if action_type == "noop":
+            return True, None
+        if action_type == "entity_patch":
+            return await self._apply_entity_patch(db, world_id=world_id, option=option, now=now)
+        if action_type == "relation_patch":
+            return await self._apply_relation_patch(db, world_id=world_id, option=option, now=now)
+        if action_type == "entity_delete":
+            return await self._apply_entity_delete(db, world_id=world_id, option=option)
+        if action_type == "relation_delete":
+            return await self._apply_relation_delete(db, world_id=world_id, option=option)
+        if action_type == "world_patch":
+            return await self._apply_world_patch(db, world_id=world_id, option=option, now=now)
+        if action_type == "timeline_operation":
+            return await self._apply_timeline_operation(db, world_id=world_id, option=option, now=now)
+        return False, f"Unsupported action_type: {action_type}"
+
     async def accept_options(
         self,
         world_id: str,
@@ -566,12 +885,13 @@ class CanonMechanicService:
         data: MechanicAcceptRequest,
     ) -> MechanicAcceptResult:
         logger.info(
-            "[TEMP][CANON][mechanic] accept_start mechanic_run_id=%s world_id=%s accept_all=%s option_ids=%d create_actions=%s",
+            "[TEMP][CANON][mechanic] accept_start mechanic_run_id=%s world_id=%s accept_all=%s option_ids=%d create_actions=%s apply_immediately=%s",
             mechanic_run_id,
             world_id,
             data.accept_all,
             len(data.option_ids),
             data.create_guardian_actions,
+            data.apply_immediately,
         )
         db = await self._get_db()
         try:
@@ -586,17 +906,17 @@ class CanonMechanicService:
 
             option_cursor = await db.execute(
                 """SELECT * FROM guardian_mechanic_options
-                   WHERE world_id = ? AND mechanic_run_id = ? AND status = 'proposed'""",
+                   WHERE world_id = ? AND mechanic_run_id = ? AND status IN ('proposed', 'accepted')""",
                 (world_id, mechanic_run_id),
             )
             option_rows = await option_cursor.fetchall()
-            proposed_options = [_row_to_mechanic_option(dict(row)) for row in option_rows]
+            candidate_options = [_row_to_mechanic_option(dict(row)) for row in option_rows]
 
             if data.accept_all:
-                selected = proposed_options
+                selected = candidate_options
             else:
                 option_ids = set(data.option_ids)
-                selected = [option for option in proposed_options if option.id in option_ids]
+                selected = [option for option in candidate_options if option.id in option_ids]
 
             if not selected:
                 logger.info(
@@ -612,23 +932,33 @@ class CanonMechanicService:
                     accepted_options=0,
                     actions_created=0,
                     actions_failed=0,
+                    applied_options=0,
+                    apply_failures=0,
                     message="No matching proposed mechanic options were selected.",
                 )
 
             actions_created = 0
             actions_failed = 0
+            applied_options = 0
+            apply_failures = 0
             now = _now()
+            option_status_by_id = {option.id: option.status for option in selected}
+            action_id_by_option_id: dict[str, str] = {}
             selected_ids = [option.id for option in selected]
-            placeholders = ", ".join("?" for _ in selected_ids)
-            await db.execute(
-                f"""UPDATE guardian_mechanic_options
-                    SET status = 'accepted', updated_at = ?
-                    WHERE world_id = ? AND mechanic_run_id = ? AND id IN ({placeholders})""",
-                [now, world_id, mechanic_run_id, *selected_ids],
-            )
+            proposed_selected_ids = [option.id for option in selected if option.status == "proposed"]
+            if proposed_selected_ids:
+                placeholders = ", ".join("?" for _ in proposed_selected_ids)
+                await db.execute(
+                    f"""UPDATE guardian_mechanic_options
+                        SET status = 'accepted', error = NULL, updated_at = ?
+                        WHERE world_id = ? AND mechanic_run_id = ? AND id IN ({placeholders})""",
+                    [now, world_id, mechanic_run_id, *proposed_selected_ids],
+                )
 
             if data.create_guardian_actions:
                 for option in selected:
+                    if option_status_by_id.get(option.id) != "proposed":
+                        continue
                     action_id = str(uuid4())
                     try:
                         await db.execute(
@@ -652,6 +982,7 @@ class CanonMechanicService:
                                 now,
                             ),
                         )
+                        action_id_by_option_id[option.id] = action_id
                         await db.execute(
                             """UPDATE guardian_mechanic_options
                                SET mapped_action_id = ?, updated_at = ?
@@ -664,29 +995,108 @@ class CanonMechanicService:
                         await db.execute(
                             """UPDATE guardian_mechanic_options
                                SET status = 'failed', error = ?, updated_at = ?
-                               WHERE id = ? AND mechanic_run_id = ?""",
+                                WHERE id = ? AND mechanic_run_id = ?""",
                             ("Failed to create guardian action.", now, option.id, mechanic_run_id),
                         )
 
+            if data.apply_immediately:
+                applied_finding_ids: set[str] = set()
+                for option in selected:
+                    if option.status not in {"proposed", "accepted"}:
+                        continue
+                    option_now = _now()
+                    success, error_text = await self._apply_mechanic_option(
+                        db,
+                        world_id=world_id,
+                        option=option,
+                        now=option_now,
+                    )
+                    if success:
+                        applied_options += 1
+                        await db.execute(
+                            """UPDATE guardian_mechanic_options
+                               SET status = 'applied', error = NULL, updated_at = ?
+                               WHERE world_id = ? AND mechanic_run_id = ? AND id = ?""",
+                            (option_now, world_id, mechanic_run_id, option.id),
+                        )
+                        if option.finding_id:
+                            applied_finding_ids.add(option.finding_id)
+                        mapped_action_id = option.mapped_action_id or action_id_by_option_id.get(option.id)
+                        if mapped_action_id:
+                            await db.execute(
+                                """UPDATE guardian_actions
+                                   SET status = 'applied', error = NULL, updated_at = ?
+                                   WHERE world_id = ? AND id = ?""",
+                                (option_now, world_id, mapped_action_id),
+                            )
+                    else:
+                        apply_failures += 1
+                        failure_reason = error_text or "Failed to apply mechanic option."
+                        await db.execute(
+                            """UPDATE guardian_mechanic_options
+                               SET status = 'failed', error = ?, updated_at = ?
+                               WHERE world_id = ? AND mechanic_run_id = ? AND id = ?""",
+                            (failure_reason, option_now, world_id, mechanic_run_id, option.id),
+                        )
+                        mapped_action_id = option.mapped_action_id or action_id_by_option_id.get(option.id)
+                        if mapped_action_id:
+                            await db.execute(
+                                """UPDATE guardian_actions
+                                   SET status = 'failed', error = ?, updated_at = ?
+                                   WHERE world_id = ? AND id = ?""",
+                                (failure_reason, option_now, world_id, mapped_action_id),
+                            )
+                if applied_finding_ids:
+                    placeholders = ", ".join("?" for _ in applied_finding_ids)
+                    await db.execute(
+                        f"""UPDATE guardian_findings
+                            SET resolution_status = 'applied', updated_at = ?
+                            WHERE world_id = ? AND run_id = ? AND id IN ({placeholders})""",
+                        [_now(), world_id, run.run_id, *applied_finding_ids],
+                    )
+
+            remaining_cursor = await db.execute(
+                """SELECT COUNT(1) AS count
+                   FROM guardian_mechanic_options
+                   WHERE world_id = ? AND mechanic_run_id = ? AND status = 'proposed'""",
+                (world_id, mechanic_run_id),
+            )
+            remaining_row = await remaining_cursor.fetchone()
+            remaining_proposed = int(remaining_row["count"]) if remaining_row else 0
+            run_status = "completed" if remaining_proposed == 0 else "partial"
             await db.execute(
                 """UPDATE guardian_mechanic_runs
-                   SET status = 'partial', updated_at = ?
-                   WHERE world_id = ? AND id = ?""",
-                (now, world_id, mechanic_run_id),
+                   SET status = ?, updated_at = ?
+                    WHERE world_id = ? AND id = ?""",
+                (run_status, now, world_id, mechanic_run_id),
             )
             await db.commit()
         finally:
             await db.close()
         logger.info(
-            "[TEMP][CANON][mechanic] accept_complete mechanic_run_id=%s selected=%d actions_created=%d actions_failed=%d",
+            "[TEMP][CANON][mechanic] accept_complete mechanic_run_id=%s selected=%d actions_created=%d actions_failed=%d applied_options=%d apply_failures=%d",
             mechanic_run_id,
             len(selected),
             actions_created,
             actions_failed,
+            applied_options,
+            apply_failures,
         )
 
+        status = "accepted"
+        message: str | None = None
+        if data.apply_immediately:
+            if applied_options > 0 and apply_failures == 0:
+                status = "applied"
+            elif applied_options > 0:
+                status = "applied_partial"
+                message = "Some selected options were applied, but one or more failed."
+            else:
+                status = "applied_none"
+                message = "No selected options could be applied."
+
         return MechanicAcceptResult(
-            status="accepted",
+            status=status,
             mechanic_run_id=mechanic_run_id,
             world_id=world_id,
             run_id=run.run_id,
@@ -694,5 +1104,7 @@ class CanonMechanicService:
             accepted_options=len(selected),
             actions_created=actions_created,
             actions_failed=actions_failed,
-            message=None,
+            applied_options=applied_options,
+            apply_failures=apply_failures,
+            message=message,
         )

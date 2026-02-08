@@ -182,7 +182,14 @@ export interface GuardianAction {
   run_id: string;
   finding_id?: string | null;
   world_id: string;
-  action_type: "timeline_operation" | "entity_patch" | "relation_patch" | "world_patch" | "noop";
+  action_type:
+    | "timeline_operation"
+    | "entity_patch"
+    | "relation_patch"
+    | "entity_delete"
+    | "relation_delete"
+    | "world_patch"
+    | "noop";
   op_type?: string | null;
   target_kind?: string | null;
   target_id?: string | null;
@@ -234,6 +241,27 @@ export interface MechanicGenerateAccepted {
   created_at: string;
 }
 
+export interface MechanicAcceptRequest {
+  option_ids?: string[];
+  accept_all?: boolean;
+  create_guardian_actions?: boolean;
+  apply_immediately?: boolean;
+}
+
+export interface MechanicAcceptResult {
+  status: string;
+  mechanic_run_id: string;
+  world_id: string;
+  run_id: string;
+  requested_options: number;
+  accepted_options: number;
+  actions_created: number;
+  actions_failed: number;
+  applied_options: number;
+  apply_failures: number;
+  message?: string | null;
+}
+
 export interface MechanicOption {
   id: string;
   mechanic_run_id: string;
@@ -241,7 +269,14 @@ export interface MechanicOption {
   run_id: string;
   finding_id?: string | null;
   option_index: number;
-  action_type: "timeline_operation" | "entity_patch" | "relation_patch" | "world_patch" | "noop";
+  action_type:
+    | "timeline_operation"
+    | "entity_patch"
+    | "relation_patch"
+    | "entity_delete"
+    | "relation_delete"
+    | "world_patch"
+    | "noop";
   op_type?: string | null;
   target_kind?: string | null;
   target_id?: string | null;
