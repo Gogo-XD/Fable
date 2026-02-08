@@ -1,5 +1,5 @@
 """
-Enum definitions for the Worldbuilding Companion API.
+Enum definitions for the Fable API.
 
 EntityType and RelationType are dynamic (str) to allow world-specific types.
 """

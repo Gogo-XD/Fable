@@ -1,5 +1,5 @@
 """
-Logging configuration for the Worldbuilding Companion API.
+Logging configuration for the Fable API.
 """
 
 import logging

@@ -35,7 +35,7 @@ export default function WorldSelector() {
     <div className="flex min-h-screen items-center justify-center p-8">
       <div className="w-full max-w-lg space-y-8">
         <div className="text-center">
-          <h1 className="text-4xl font-bold tracking-tight">Worldbuilding Companion</h1>
+          <h1 className="text-4xl font-bold tracking-tight">Fable</h1>
           <p className="mt-2 text-text-muted">Choose a world to explore, or create a new one.</p>
         </div>
 

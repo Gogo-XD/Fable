@@ -1,5 +1,5 @@
 """
-Worldbuilding Companion - FastAPI Backend
+Fable - FastAPI Backend
 """
 
 from contextlib import asynccontextmanager
@@ -43,7 +43,7 @@ sio = socketio.AsyncServer(
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     setup_logging()
-    logger.info("Starting Worldbuilding Companion API")
+    logger.info("Starting Fable API")
 
     await init_db()
     logger.info("Database initialized")
@@ -99,7 +99,7 @@ async def lifespan(app: FastAPI):
 
 def create_app() -> FastAPI:
     app = FastAPI(
-        title="Worldbuilding Companion API",
+        title="Fable API",
         description="AI-powered worldbuilding tool with persistent memory",
         version="1.0.0",
         lifespan=lifespan
@@ -151,7 +151,7 @@ def create_app() -> FastAPI:
     @app.get("/")
     async def root():
         return {
-            "name": "Worldbuilding Companion API",
+            "name": "Fable API",
             "version": "1.0.0",
             "docs": "/docs",
             "health": "/health"

@@ -1,5 +1,5 @@
 """
-Worldbuilding Companion models.
+Fable models.
 
 Usage:
     from app.models import Entity, EntityCreate, World, Relation, Note

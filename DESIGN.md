@@ -1,14 +1,14 @@
-# Worldbuilding Companion - Design Document
+# Fable - Design Document
 
 ## Vision
 
-**Worldbuilding Companion** is an AI-augmented knowledge graph tool for storywriters, authors, and game developers. Users build rich, interconnected worlds by creating **entities** (characters, locations, events) and **relations** (father_of, ally_of, participated_in) that are visualized as a living, interactive graph.
+**Fable** is an AI-augmented knowledge graph tool for storywriters, authors, and game developers. Users build rich, interconnected worlds by creating **entities** (characters, locations, events) and **relations** (father_of, ally_of, participated_in) that are visualized as a living, interactive graph.
 
 The tool blends manual authoring with intelligent AI extraction: users can write freeform notes and let an LLM surface entities, relations, and context automatically -- or they can craft every node by hand. The result is a structured, queryable world bible that grows with the story.
 
 ### Hackathon Theme: "Golden Age"
 
-Stories are how civilizations remember their golden ages. The Epic of Gilgamesh, the Mahabharata, Romance of the Three Kingdoms -- these worldbuilding acts preserved entire eras of human achievement. In an age of AI-generated slop, **Worldbuilding Companion** is a tool that amplifies human creativity rather than replacing it. AI assists with organization and extraction, but the vision, the lore, the soul of the world -- that stays with the author. This is a tool for the next golden age of storytelling: one where human ingenuity is augmented, not automated.
+Stories are how civilizations remember their golden ages. The Epic of Gilgamesh, the Mahabharata, Romance of the Three Kingdoms -- these worldbuilding acts preserved entire eras of human achievement. In an age of AI-generated slop, **Fable** is a tool that amplifies human creativity rather than replacing it. AI assists with organization and extraction, but the vision, the lore, the soul of the world -- that stays with the author. This is a tool for the next golden age of storytelling: one where human ingenuity is augmented, not automated.
 
 ---
 
