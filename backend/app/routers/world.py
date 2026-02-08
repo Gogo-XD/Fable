@@ -2,8 +2,8 @@
 
 from fastapi import APIRouter, HTTPException
 
-from app.models import World, WorldCreate, WorldUpdate
-from app.dependencies import WorldServiceDep
+from app.models import World, WorldCreate, WorldUpdate, RagCompileRequest, RagCompileResult
+from app.dependencies import WorldServiceDep, WorldRagSyncServiceDep
 
 router = APIRouter()
 
@@ -27,10 +27,17 @@ async def get_world(world_id: str, service: WorldServiceDep):
 
 
 @router.put("/{world_id}", response_model=World)
-async def update_world(world_id: str, body: WorldUpdate, service: WorldServiceDep):
+async def update_world(
+    world_id: str,
+    body: WorldUpdate,
+    service: WorldServiceDep,
+    rag_sync: WorldRagSyncServiceDep,
+):
     world = await service.update_world(world_id, body)
     if not world:
         raise HTTPException(404, "World not found")
+    if body.description is not None or body.entity_types is not None or body.relation_types is not None:
+        await rag_sync.mark_dirty(world_id, reason="world_update")
     return world
 
 
@@ -40,3 +47,17 @@ async def delete_world(world_id: str, service: WorldServiceDep):
     if not deleted:
         raise HTTPException(404, "World not found")
     return {"status": "deleted", "world_id": world_id}
+
+
+@router.post("/{world_id}/rag/compile", response_model=RagCompileResult)
+async def compile_world_rag(
+    world_id: str,
+    body: RagCompileRequest,
+    service: WorldRagSyncServiceDep,
+):
+    try:
+        return await service.compile_world_documents(world_id=world_id, data=body)
+    except LookupError as exc:
+        raise HTTPException(404, str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc

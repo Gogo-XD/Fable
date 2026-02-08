@@ -5,6 +5,8 @@ type EntityNodeData = {
   entityType: string;
   source: "user" | "ai";
   color: string;
+  status?: string;
+  existsAtMarker?: boolean;
   focusState?: "normal" | "active" | "neighbor" | "dim";
 };
 
@@ -15,24 +17,39 @@ export default function EntityNode({ data }: NodeProps) {
   const isActive = focus === "active";
   const isNeighbor = focus === "neighbor";
   const isDim = focus === "dim";
+  const existsAtMarker = d.existsAtMarker !== false;
+  const nodeColor = existsAtMarker ? d.color : "var(--color-text-muted)";
+  const borderColor = existsAtMarker ? d.color : "var(--color-border)";
 
   return (
     <div
       className="flex flex-col items-center"
-      style={{ pointerEvents: "all", opacity: isDim ? 0.28 : 1 }}
+      style={{
+        pointerEvents: "all",
+        opacity: !existsAtMarker ? 0.42 : isDim ? 0.28 : 1,
+        transition: "opacity 220ms ease",
+      }}
     >
       <div
         className="relative rounded-full shadow-lg"
         style={{
           width: isActive ? 22 : isNeighbor ? 18 : 16,
           height: isActive ? 22 : isNeighbor ? 18 : 16,
-          backgroundColor: d.color,
-          border: isAI ? "2px dashed var(--color-ai)" : `2px solid ${d.color}`,
-          boxShadow: isActive
-            ? `0 0 0 3px var(--color-accent), 0 0 16px ${d.color}a0`
-            : isNeighbor
-              ? `0 0 12px ${d.color}80`
-              : `0 0 8px ${d.color}60`,
+          backgroundColor: nodeColor,
+          border: !existsAtMarker
+            ? `2px solid ${borderColor}`
+            : isAI
+              ? "2px dashed var(--color-ai)"
+              : `2px solid ${borderColor}`,
+          boxShadow: !existsAtMarker
+            ? `0 0 8px ${borderColor}66`
+            : isActive
+              ? `0 0 0 3px var(--color-accent), 0 0 16px ${nodeColor}a0`
+              : isNeighbor
+                ? `0 0 12px ${nodeColor}80`
+                : `0 0 8px ${nodeColor}60`,
+          transition:
+            "width 180ms ease, height 180ms ease, background-color 220ms ease, border-color 220ms ease, box-shadow 220ms ease",
         }}
       >
         <Handle
@@ -51,9 +68,10 @@ export default function EntityNode({ data }: NodeProps) {
       <span
         className="mt-1 max-w-24 truncate text-center text-xs"
         style={{
-          color: d.color,
+          color: nodeColor,
           fontWeight: isActive ? 700 : isNeighbor ? 600 : 500,
-          opacity: isDim ? 0.65 : 1,
+          opacity: !existsAtMarker ? 0.7 : isDim ? 0.65 : 1,
+          transition: "color 220ms ease, opacity 220ms ease",
         }}
       >
         {d.label}

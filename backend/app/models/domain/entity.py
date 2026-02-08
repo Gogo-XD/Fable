@@ -18,6 +18,7 @@ class EntityCreate(BaseModel):
     summary: Optional[str] = None
     tags: list[str] = Field(default_factory=list)
     image_url: Optional[str] = None
+    status: str = "active"
 
 
 class EntityUpdate(BaseModel):
@@ -30,6 +31,7 @@ class EntityUpdate(BaseModel):
     summary: Optional[str] = None
     tags: Optional[list[str]] = None
     image_url: Optional[str] = None
+    status: Optional[str] = None
 
 
 class Entity(BaseModel):
@@ -44,6 +46,8 @@ class Entity(BaseModel):
     summary: Optional[str] = None
     tags: list[str] = Field(default_factory=list)
     image_url: Optional[str] = None
+    status: str = "active"
+    exists_at_marker: bool = True
     source: EntitySource = EntitySource.USER
     source_note_id: Optional[str] = None
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))

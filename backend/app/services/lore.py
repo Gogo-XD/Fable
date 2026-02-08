@@ -15,12 +15,18 @@ from app.services.backboard import BackboardService
 from app.services.lore_entities import LoreEntityService
 from app.services.lore_notes import LoreNoteService
 from app.services.lore_relations import LoreRelationService
+from app.services.timeline import TimelineService
 
 
 class LoreService:
     """Compatibility facade delegating to focused lore services."""
 
-    def __init__(self, db_path: str, backboard: BackboardService):
+    def __init__(
+        self,
+        db_path: str,
+        backboard: BackboardService,
+        timeline_service: TimelineService,
+    ):
         self.entities = LoreEntityService(
             db_path=db_path,
             backboard=backboard,
@@ -31,6 +37,7 @@ class LoreService:
             backboard=backboard,
             entity_service=self.entities,
             relation_service=self.relations,
+            timeline_service=timeline_service,
         )
 
     # Entities
@@ -111,3 +118,6 @@ class LoreService:
 
     async def analyze_note(self, world_id: str, note_id: str) -> dict:
         return await self.notes.analyze_note(world_id, note_id)
+
+    async def analyze_all_unanalyzed_notes(self, world_id: str) -> dict:
+        return await self.notes.analyze_all_unanalyzed_notes(world_id)

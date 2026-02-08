@@ -11,16 +11,25 @@ from app.config import settings
 from app.database.db import init_db
 from app.logging import setup_logging, get_logger
 from app.routers import (
+    canon_guardian,
     graph,
+    historian,
     lore_entities,
     lore_notes,
     lore_relations,
+    timeline,
     world,
 )
 from app.services.backboard import BackboardService
+from app.services.canon_guardian import CanonGuardianService
+from app.services.canon_mechanic import CanonMechanicService
 from app.services.graph import GraphService
+from app.services.historian import HistorianService
 from app.services.lore import LoreService
+from app.services.timeline import TimelineService
 from app.services.world import WorldService
+from app.services.world_rag_compiler import WorldRagCompilerService
+from app.services.world_rag_sync import WorldRagSyncService
 
 logger = get_logger('main')
 
@@ -48,12 +57,38 @@ async def lifespan(app: FastAPI):
         db_path=settings.DATABASE_PATH,
         backboard=backboard,
     )
+    app.state.timeline_service = TimelineService(
+        db_path=settings.DATABASE_PATH,
+    )
     app.state.lore_service = LoreService(
         db_path=settings.DATABASE_PATH,
         backboard=backboard,
+        timeline_service=app.state.timeline_service,
     )
     app.state.graph_service = GraphService(
         db_path=settings.DATABASE_PATH,
+    )
+    app.state.canon_guardian_service = CanonGuardianService(
+        db_path=settings.DATABASE_PATH,
+        backboard=backboard,
+    )
+    app.state.canon_mechanic_service = CanonMechanicService(
+        db_path=settings.DATABASE_PATH,
+        backboard=backboard,
+    )
+    app.state.world_rag_compiler_service = WorldRagCompilerService(
+        db_path=settings.DATABASE_PATH,
+        backboard=backboard,
+    )
+    app.state.world_rag_sync_service = WorldRagSyncService(
+        db_path=settings.DATABASE_PATH,
+        compiler=app.state.world_rag_compiler_service,
+    )
+    app.state.historian_service = HistorianService(
+        db_path=settings.DATABASE_PATH,
+        backboard=backboard,
+        rag_sync=app.state.world_rag_sync_service,
+        timeline_service=app.state.timeline_service,
     )
     logger.info("Services initialized")
 
@@ -86,7 +121,10 @@ def create_app() -> FastAPI:
     app.include_router(lore_entities.router, prefix="/api/lore", tags=["Lore Entities"])
     app.include_router(lore_relations.router, prefix="/api/lore", tags=["Lore Relations"])
     app.include_router(lore_notes.router, prefix="/api/lore", tags=["Lore Notes"])
+    app.include_router(canon_guardian.router, prefix="/api/guardian", tags=["Canon Guardian"])
+    app.include_router(historian.router, prefix="/api/historian", tags=["Historian"])
     app.include_router(graph.router, prefix="/api/graph", tags=["Graph"])
+    app.include_router(timeline.router, prefix="/api/timeline", tags=["Timeline"])
 
     @sio.event
     async def connect(sid, environ):

@@ -86,8 +86,9 @@ class LoreRelationService:
         relation_type: str,
         context: str | None,
         weight: float = 0.5,
-    ) -> None:
+    ) -> str:
         now = _now()
+        relation_id = str(uuid4())
         db = await self._get_db()
         try:
             await db.execute(
@@ -95,7 +96,7 @@ class LoreRelationService:
                    (id, world_id, source_entity_id, target_entity_id, type, context, weight, source, source_note_id, created_at, updated_at)
                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
-                    str(uuid4()),
+                    relation_id,
                     world_id,
                     source_id,
                     target_id,
@@ -111,6 +112,7 @@ class LoreRelationService:
             await db.commit()
         finally:
             await db.close()
+        return relation_id
 
     async def relation_exists(
         self,
@@ -206,4 +208,3 @@ class LoreRelationService:
             return cursor.rowcount > 0
         finally:
             await db.close()
-

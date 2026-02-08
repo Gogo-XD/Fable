@@ -31,6 +31,55 @@ import EntityNode from "./EntityNode.tsx";
 
 // Custom straight edge that shortens both ends so the arrow isn't hidden behind nodes
 const NODE_RADIUS = 10; // dot radius (8) + small gap
+type GraphPoint = { x: number; y: number };
+
+function hashToUnitInterval(value: string): number {
+  let hash = 0;
+  for (let i = 0; i < value.length; i += 1) {
+    hash = (hash << 5) - hash + value.charCodeAt(i);
+    hash |= 0;
+  }
+  return (Math.abs(hash) % 1000) / 1000;
+}
+
+function deterministicJitter(id: string, magnitude = 56): GraphPoint {
+  const xSeed = hashToUnitInterval(`${id}:x`);
+  const ySeed = hashToUnitInterval(`${id}:y`);
+  return {
+    x: (xSeed - 0.5) * magnitude,
+    y: (ySeed - 0.5) * magnitude,
+  };
+}
+
+function averagePoint(points: GraphPoint[]): GraphPoint {
+  if (points.length === 0) return { x: 0, y: 0 };
+  const sum = points.reduce(
+    (acc, point) => ({ x: acc.x + point.x, y: acc.y + point.y }),
+    { x: 0, y: 0 },
+  );
+  return { x: sum.x / points.length, y: sum.y / points.length };
+}
+
+function seedPositionFromNeighbors(
+  entityId: string,
+  relations: Relation[],
+  previousPositions: Map<string, GraphPoint>,
+  fallbackCenter: GraphPoint,
+): GraphPoint {
+  const neighborIds = new Set<string>();
+  for (const relation of relations) {
+    if (relation.source_entity_id === entityId) neighborIds.add(relation.target_entity_id);
+    if (relation.target_entity_id === entityId) neighborIds.add(relation.source_entity_id);
+  }
+
+  const anchorPoints = Array.from(neighborIds)
+    .map((neighborId) => previousPositions.get(neighborId))
+    .filter((point): point is GraphPoint => Boolean(point));
+
+  const base = anchorPoints.length > 0 ? averagePoint(anchorPoints) : fallbackCenter;
+  const jitter = deterministicJitter(entityId, anchorPoints.length > 0 ? 34 : 70);
+  return { x: base.x + jitter.x, y: base.y + jitter.y };
+}
 
 function DirectedEdge({
   id,
@@ -121,29 +170,43 @@ function buildEdges(
   entities: Entity[],
   activeEntityId?: string,
 ): Edge[] {
-  const entityNameById = new Map(entities.map((e) => [e.id, e.name]));
+  const entityById = new Map(entities.map((e) => [e.id, e]));
   const edges = relations.map((r) => {
-    const baseColor =
-      r.source === "ai" ? "var(--color-ai)" : "var(--color-text-muted)";
+    const sourceEntity = entityById.get(r.source_entity_id);
+    const targetEntity = entityById.get(r.target_entity_id);
+    const sourceExists = sourceEntity?.exists_at_marker !== false;
+    const targetExists = targetEntity?.exists_at_marker !== false;
+    const relationExists = r.exists_at_marker !== false;
+    const existsAtMarker = relationExists && sourceExists && targetExists;
+    const baseColor = existsAtMarker
+      ? r.source === "ai"
+        ? "var(--color-ai)"
+        : "var(--color-text-muted)"
+      : "var(--color-border)";
     const isConnected = Boolean(
       activeEntityId &&
       (r.source_entity_id === activeEntityId ||
         r.target_entity_id === activeEntityId),
     );
     const isDimmed = Boolean(activeEntityId) && !isConnected;
-    const color = isConnected ? "var(--color-accent)" : baseColor;
-    const sourceName = entityNameById.get(r.source_entity_id) ?? "Unknown";
-    const targetName = entityNameById.get(r.target_entity_id) ?? "Unknown";
+    const color = existsAtMarker
+      ? isConnected
+        ? "var(--color-accent)"
+        : baseColor
+      : "var(--color-text-muted)";
+    const sourceName = sourceEntity?.name ?? "Unknown";
+    const targetName = targetEntity?.name ?? "Unknown";
     return {
       id: r.id,
       source: r.source_entity_id,
       target: r.target_entity_id,
       style: {
         stroke: color,
-        strokeWidth: isConnected ? 2.5 : 1,
-        opacity: isDimmed ? 0.15 : 1,
+        strokeWidth: existsAtMarker ? (isConnected ? 2.5 : 1) : 1,
+        opacity: existsAtMarker ? (isDimmed ? 0.15 : 1) : isDimmed ? 0.12 : 0.25,
+        transition: "stroke 220ms ease, opacity 220ms ease, stroke-width 220ms ease",
       },
-      zIndex: isConnected ? 2 : 1,
+      zIndex: existsAtMarker && isConnected ? 2 : 1,
       markerEnd: { type: MarkerType.ArrowClosed, color, width: 14, height: 14 },
       type: "directed",
       data: {
@@ -170,6 +233,7 @@ function ForceGraph({
     typeof forceSimulation<SimNode>
   > | null>(null);
   const simNodeMapRef = useRef<Map<string, SimNode>>(new Map());
+  const nodePositionRef = useRef<Map<string, GraphPoint>>(new Map());
   const rafRef = useRef<number | null>(null);
   const draggedNodeRef = useRef<string | null>(null);
 
@@ -181,6 +245,12 @@ function ForceGraph({
 
   const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>(builtEdges);
+
+  useEffect(() => {
+    nodePositionRef.current = new Map(
+      nodes.map((node) => [node.id, { x: node.position.x, y: node.position.y }]),
+    );
+  }, [nodes]);
 
   // Sync edges when relations change
   useEffect(() => {
@@ -221,15 +291,52 @@ function ForceGraph({
           entityType: e.type,
           source: e.source,
           color: getNodeColor(e.type),
+          status: e.status,
+          existsAtMarker: e.exists_at_marker !== false,
         },
       ]),
     );
 
-    const simNodes: SimNode[] = entities.map((e) => ({
-      id: e.id,
-      x: Math.random() * 400 - 200,
-      y: Math.random() * 400 - 200,
-    }));
+    const previousPositions = nodePositionRef.current;
+    const preservedPoints = entities
+      .map((entity) => previousPositions.get(entity.id))
+      .filter((point): point is GraphPoint => Boolean(point));
+
+    const hasPriorPositions = preservedPoints.length > 0;
+    const fallbackCenter =
+      preservedPoints.length > 0
+        ? averagePoint(preservedPoints)
+        : averagePoint(Array.from(previousPositions.values()));
+    const seededPositions = new Map(
+      entities.map((entity) => {
+        const existing = previousPositions.get(entity.id);
+        const position =
+          existing ??
+          seedPositionFromNeighbors(
+            entity.id,
+            relations,
+            previousPositions,
+            fallbackCenter,
+          );
+        return [entity.id, position] as const;
+      }),
+    );
+
+    const simNodes: SimNode[] = entities.map((entity) => {
+      const seeded = seededPositions.get(entity.id);
+      if (seeded) {
+        return {
+          id: entity.id,
+          x: seeded.x,
+          y: seeded.y,
+        };
+      }
+      return {
+        id: entity.id,
+        x: Math.random() * 400 - 200,
+        y: Math.random() * 400 - 200,
+      };
+    });
 
     const simNodeMap = new Map(simNodes.map((n) => [n.id, n]));
     simNodeMapRef.current = simNodeMap;
@@ -259,7 +366,8 @@ function ForceGraph({
       .force("collide", forceCollide(50))
       .stop();
 
-    for (let i = 0; i < 300; i++) sim.tick();
+    const initialTickCount = hasPriorPositions ? 32 : 300;
+    for (let i = 0; i < initialTickCount; i++) sim.tick();
 
     setNodes(
       simNodes.map((sn) => ({
@@ -271,7 +379,9 @@ function ForceGraph({
     );
 
     simulationRef.current = sim;
-    requestAnimationFrame(() => fitView({ duration: 300 }));
+    if (!hasPriorPositions) {
+      requestAnimationFrame(() => fitView({ duration: 300 }));
+    }
 
     return () => {
       sim.stop();
@@ -299,6 +409,8 @@ function ForceGraph({
           entityType: e.type,
           source: e.source,
           color: getNodeColor(e.type),
+          status: e.status,
+          existsAtMarker: e.exists_at_marker !== false,
           focusState: !activeEntityId
             ? "normal"
             : e.id === activeEntityId
@@ -476,7 +588,9 @@ function ForceGraph({
             <circle cx={x} cy={y} r={8} fill={color} />
           )}
           nodeColor={(n) =>
-            (n.data as { color?: string }).color ?? "var(--color-node-default)"
+            (n.data as { color?: string; existsAtMarker?: boolean }).existsAtMarker === false
+              ? "var(--color-text-muted)"
+              : (n.data as { color?: string }).color ?? "var(--color-node-default)"
           }
           maskColor="transparent"
           maskStrokeColor="transparent"

@@ -37,6 +37,7 @@ def _row_to_entity(row: dict) -> Entity:
         summary=row.get("summary"),
         tags=json.loads(row["tags"]),
         image_url=row.get("image_url"),
+        status=row.get("status", "active"),
         source=row["source"],
         source_note_id=row.get("source_note_id"),
         created_at=row["created_at"],
@@ -80,6 +81,7 @@ class LoreEntityService:
             summary=data.summary,
             tags=data.tags,
             image_url=data.image_url,
+            status=data.status,
             source=EntitySource.USER,
             created_at=now,
             updated_at=now,
@@ -88,8 +90,8 @@ class LoreEntityService:
         try:
             await db.execute(
                 """INSERT INTO entities
-                   (id, world_id, name, type, subtype, aliases, context, summary, tags, image_url, source, source_note_id, created_at, updated_at)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                   (id, world_id, name, type, subtype, aliases, context, summary, tags, image_url, status, source, source_note_id, created_at, updated_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
                     entity.id,
                     entity.world_id,
@@ -101,6 +103,7 @@ class LoreEntityService:
                     entity.summary,
                     json.dumps(entity.tags),
                     entity.image_url,
+                    entity.status,
                     entity.source.value,
                     entity.source_note_id,
                     entity.created_at,
@@ -121,8 +124,8 @@ class LoreEntityService:
         try:
             await db.execute(
                 """INSERT INTO entities
-                   (id, world_id, name, type, subtype, aliases, context, summary, tags, image_url, source, source_note_id, created_at, updated_at)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                   (id, world_id, name, type, subtype, aliases, context, summary, tags, image_url, status, source, source_note_id, created_at, updated_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
                     entity_id,
                     world_id,
@@ -134,6 +137,7 @@ class LoreEntityService:
                     extracted.summary,
                     json.dumps(extracted.tags),
                     None,
+                    "active",
                     EntitySource.AI.value,
                     note_id,
                     now,
@@ -239,6 +243,8 @@ class LoreEntityService:
             fields["tags"] = json.dumps(data.tags)
         if data.image_url is not None:
             fields["image_url"] = data.image_url
+        if data.status is not None:
+            fields["status"] = data.status
         if not fields:
             return existing
         fields["source"] = EntitySource.USER.value
@@ -295,7 +301,7 @@ class LoreEntityService:
                 existing_context=existing_context,
                 incoming_context=incoming_context,
             )
-            chat_result = await self.backboard.chat(thread_id=thread_id, prompt=prompt)
+            chat_result = await self.backboard.chat(thread_id=thread_id, prompt=prompt, memory="off")
             if not chat_result.success or not chat_result.response:
                 return incoming_context or existing_context
             merged = chat_result.response.strip()

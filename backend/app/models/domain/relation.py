@@ -33,6 +33,7 @@ class Relation(BaseModel):
     type: str
     context: Optional[str] = None
     weight: float = Field(default=0.5, ge=0.0, le=1.0)
+    exists_at_marker: bool = True
     source: EntitySource = EntitySource.USER
     source_note_id: Optional[str] = None
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))

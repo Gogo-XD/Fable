@@ -19,6 +19,7 @@ def _row_to_entity(row: dict) -> Entity:
         summary=row.get("summary"),
         tags=json.loads(row["tags"]),
         image_url=row.get("image_url"),
+        status=row.get("status", "active"),
         source=row["source"],
         source_note_id=row.get("source_note_id"),
         created_at=row["created_at"],

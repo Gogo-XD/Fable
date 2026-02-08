@@ -37,3 +37,12 @@ class DocumentUpdated(BackboardResult):
 class ChatResponse(BackboardResult):
     """Result of a chat message exchange."""
     response: Optional[str] = None
+    error: Optional[str] = None
+    model_provider: Optional[str] = None
+    model_name: Optional[str] = None
+    input_tokens: Optional[int] = None
+    output_tokens: Optional[int] = None
+    total_tokens: Optional[int] = None
+    memory_operation_id: Optional[str] = None
+    retrieved_memories_count: Optional[int] = None
+    retrieved_files_count: Optional[int] = None

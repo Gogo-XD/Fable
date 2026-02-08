@@ -1,19 +1,46 @@
 import { useState } from "react";
 import { Plus, FileText, Sparkles, Save, Loader2 } from "lucide-react";
-import type { Note, NoteCreate, NoteUpdate, AnalysisResult } from "../types.ts";
+import type {
+  Note,
+  NoteCreate,
+  NoteUpdate,
+  AnalysisResult,
+  AnalyzeAllResult,
+} from "../types.ts";
 
 interface Props {
   notes: Note[];
   onCreateNote: (data: NoteCreate) => void;
   onUpdateNote: (id: string, data: NoteUpdate) => void;
   onAnalyzeNote: (id: string) => Promise<AnalysisResult>;
+  onAnalyzeAllNotes: () => Promise<AnalyzeAllResult>;
 }
 
-export default function NotePanel({ notes, onCreateNote, onUpdateNote, onAnalyzeNote }: Props) {
+export default function NotePanel({
+  notes,
+  onCreateNote,
+  onUpdateNote,
+  onAnalyzeNote,
+  onAnalyzeAllNotes,
+}: Props) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
+  const [analyzingAll, setAnalyzingAll] = useState(false);
+  const [allResult, setAllResult] = useState<AnalyzeAllResult | null>(null);
 
   const selected = notes.find((n) => n.id === selectedId);
+  const pendingAnalyzeCount = notes.filter((n) => n.status !== "analyzed").length;
+
+  async function handleAnalyzeAll() {
+    setAnalyzingAll(true);
+    setAllResult(null);
+    try {
+      const result = await onAnalyzeAllNotes();
+      setAllResult(result);
+    } finally {
+      setAnalyzingAll(false);
+    }
+  }
 
   if (creating) {
     return (
@@ -46,6 +73,30 @@ export default function NotePanel({ notes, onCreateNote, onUpdateNote, onAnalyze
       >
         <Plus size={16} /> New Note
       </button>
+      <button
+        onClick={handleAnalyzeAll}
+        disabled={analyzingAll || pendingAnalyzeCount === 0}
+        className="flex w-full items-center justify-center gap-2 rounded-lg bg-cyan-700 py-2 text-sm font-medium text-white hover:bg-cyan-600 disabled:opacity-50"
+      >
+        {analyzingAll ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
+        {analyzingAll
+          ? "Analyzing All..."
+          : `Analyze All (${pendingAnalyzeCount} pending)`}
+      </button>
+      {allResult && (
+        <div className="rounded-lg border border-green-800 bg-green-900/20 p-3 text-sm">
+          <div className="font-medium text-green-400">Bulk analysis complete</div>
+          <div className="mt-1 text-text-muted">
+            {allResult.notes_analyzed} analyzed, {allResult.notes_skipped} skipped,{" "}
+            {allResult.notes_failed} failed
+          </div>
+          <div className="mt-1 text-text-muted">
+            {allResult.entities_created} entities created, {allResult.entities_updated} updated,{" "}
+            {allResult.relations_created} relations created,{" "}
+            {allResult.timeline_markers_created} timeline markers added
+          </div>
+        </div>
+      )}
       {notes.map((n) => (
         <div
           key={n.id}
@@ -184,7 +235,7 @@ function NoteView({ note, onUpdate, onAnalyze, onBack }: {
       <div className="flex gap-2">
         <button
           onClick={() => setEditing(true)}
-          className="flex-1 rounded-lg border border-border py-2 text-sm text-text-muted hover:bg-surface-hover"
+          className="rounded-lg border border-border px-4 py-2 text-sm text-text-muted hover:bg-surface-hover"
         >
           Edit
         </button>
@@ -201,7 +252,7 @@ function NoteView({ note, onUpdate, onAnalyze, onBack }: {
         <div className="rounded-lg border border-green-800 bg-green-900/20 p-3 text-sm">
           <div className="font-medium text-green-400">Analysis complete</div>
           <div className="mt-1 text-text-muted">
-            {result.entities_created} entities created, {result.entities_updated} updated, {result.relations_created} relations created
+            {result.entities_created} entities created, {result.entities_updated} updated, {result.relations_created} relations created, {result.timeline_markers_created} timeline markers added
           </div>
         </div>
       )}

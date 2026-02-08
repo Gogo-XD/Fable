@@ -16,7 +16,7 @@ export default function SidePanel({ title, onClose, children }: Props) {
           <X size={18} />
         </button>
       </div>
-      <div className="flex-1 overflow-y-auto p-4">{children}</div>
+      <div className="min-h-0 flex-1 overflow-y-auto p-4">{children}</div>
     </div>
   );
 }
